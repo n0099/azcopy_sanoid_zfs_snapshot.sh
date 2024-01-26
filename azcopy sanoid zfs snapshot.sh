@@ -8,13 +8,13 @@ file_systems.sh
 # https://github.com/jimsalterjrs/sanoid/wiki/Sanoid#options
 [template_azcopy]
 daily=7
-daily_hour = 3
-daily_min = 0
+daily_hour=3
+daily_min=0
 
 weekly=8
-weekly_wday = 1
-weekly_hour = 3
-weekly_min = 0
+weekly_wday=1
+weekly_hour=3
+weekly_min=0
 
 monthly=0
 

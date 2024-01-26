@@ -33,7 +33,7 @@ process() {
             # may requires custom sorter to put complete _weekly after increasemental _daily https://superuser.com/questions/489275/how-to-do-custom-sorting-using-unix-sort
             latest_snapshot=$(azcopy ls "$CONTAINER$SAS" \
                 | awk -F\; '{print $1}' \
-                | grep -oP '(?<=^INFO: )2024-W04/DB/mysql/main/[^/]*$' \
+                | grep -oP '(?<=^INFO: )'"$directory"'[^/]*$' \
                 | sort -n \
                 | tail -n 1)
             [[ $latest_snapshot ]] || return 0
