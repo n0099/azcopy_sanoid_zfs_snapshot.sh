@@ -11,9 +11,10 @@ send() {
     # intentionally word-splitting https://unix.stackexchange.com/questions/378584/spread-bash-argument-by-whitespace/378591#378591
     # shellcheck disable=SC2086
     send_size_uncompressed=$(zfs send -LcPn $send_params | awk '/^size/{print $2}')
-    [[ $send_size_uncompressed -eq 624 ]] && return 0 # 624 bytes usually means "no changes" between snapshots
+    [[ $send_size_uncompressed -le 624 ]] && return 0 # increasemental <=624 bytes usually means "no changes" between snapshots
     # shellcheck disable=SC2086
     send_size=$(zfs send -LcPn $send_params | awk '/^size/{print $2}')
+    [[ $send_size ]] || return 0
     # shellcheck disable=SC2086
     zfs send -LcP $send_params \
         | pv -pterabfs "$send_size" \
@@ -26,9 +27,13 @@ process() {
     case $snapshot in
         autosnap_*_daily)
             directory=$week/${FILE_SYSTEM#rpool/}/
-            latest_snapshot=$(azcopy list "$CONTAINER$SAS" --output-type json \
-                | jq -r 'select(.MessageType == "Info").MessageContent | split(";") | .[0]
-                    | ltrimstr("INFO: ") | select(startswith("'"$directory"'"))' \
+            # https://github.com/Azure/azure-storage-azcopy/issues/583
+            # https://github.com/Azure/azure-storage-azcopy/issues/858
+            # https://github.com/Azure/azure-storage-azcopy/issues/1546
+            # may requires custom sorter to put complete _weekly after increasemental _daily https://superuser.com/questions/489275/how-to-do-custom-sorting-using-unix-sort
+            latest_snapshot=$(azcopy ls "$CONTAINER$SAS" \
+                | awk -F\; '{print $1}' \
+                | grep -oP '(?<=^INFO: )2024-W04/DB/mysql/main/[^/]*$' \
                 | sort -n \
                 | tail -n 1)
             [[ $latest_snapshot ]] || return 0
