@@ -15,8 +15,11 @@ send() {
     # shellcheck disable=SC2086
     send_size=$(zfs send -LcPn $send_params | awk '/^size/{print $2}')
     [[ $send_size ]] || return 0
+    # https://serverfault.com/questions/95639/count-number-of-bytes-piped-from-one-process-to-another/95654#95654
+    # https://superuser.com/questions/1470608/file-redirection-vs-dd/1470733#1470733
     # shellcheck disable=SC2086
     zfs send -LcP $send_params \
+        | tee >(dd of=/dev/null) \
         | pv -pterabfs "$send_size" \
         | azcopy cp --from-to PipeBlob --block-size-mb 32 \
             "$CONTAINER/$week/${file_system#rpool/}/${snapshot#autosnap_}$SAS"
@@ -27,6 +30,8 @@ process() {
     case $snapshot in
         autosnap_*_daily)
             directory=$week/${FILE_SYSTEM#rpool/}/
+            # azcopy ls "$CONTAINER$directory$SAS" require READ permission for SAS
+            # instead of LIST permission to filter files with directory prefix
             # https://github.com/Azure/azure-storage-azcopy/issues/583
             # https://github.com/Azure/azure-storage-azcopy/issues/858
             # https://github.com/Azure/azure-storage-azcopy/issues/1546

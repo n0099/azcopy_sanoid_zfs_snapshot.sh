@@ -4,16 +4,24 @@ SANOID_SNAPNAMES=autosnap_2024-01-26_09:03:36_weekly,autosnap_2024-01-26_09:03:3
 SANOID_TARGETS=rpool/ROOT \
 file_systems.sh
 
-# https://github.com/jimsalterjrs/sanoid#sanoid-script-hooks
-# https://github.com/jimsalterjrs/sanoid/wiki/Sanoid#options
 [template_azcopy]
+hourly=24
+
 daily=7
-daily_hour=3
+#daily=0
+# https://github.com/jimsalterjrs/sanoid/issues/720
+# https://github.com/jimsalterjrs/sanoid/issues/617
+# https://github.com/jimsalterjrs/sanoid/issues/560
+# T04:00+08:00
+daily_hour=12
 daily_min=0
 
 weekly=8
+#weekly=0
+# Tue in UTC+8
 weekly_wday=1
-weekly_hour=3
+# T03:00+08:00
+weekly_hour=11
 weekly_min=0
 
 monthly=0
