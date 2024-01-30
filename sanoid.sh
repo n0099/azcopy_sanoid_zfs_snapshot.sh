@@ -16,7 +16,8 @@ else
 fi
 source "$bundledir/config.sh"
 
-azcopy ls --running-tally "$CONTAINER$SAS"
+week=$(date +%G-W%V) # https://en.wikipedia.org/wiki/ISO_week_date
+azcopy ls --running-tally "$CONTAINER/$week/$SAS"
 # https://github.com/jimsalterjrs/sanoid/issues/455
 # https://github.com/jimsalterjrs/sanoid/issues/104
 # https://stackoverflow.com/questions/918886/how-do-i-split-a-string-on-a-delimiter-in-bash/15988793#15988793
@@ -35,28 +36,26 @@ process_file_system() {
 }
 
 process_snapshots() {
-    week=$(date +%G-W%V) # https://en.wikipedia.org/wiki/ISO_week_date
     file_system=$1 # share with process_snapshot()
     # shellcheck disable=SC2317
     process_snapshot() {
         local snapshot=$2
         case $snapshot in
             autosnap_*_daily)
-                directory=$week/${file_system#rpool/}/
-                # azcopy ls "$CONTAINER$directory$SAS" require READ permission for SAS
-                # instead of LIST permission to filter files with directory prefix
+                # azcopy ls "$CONTAINER/virtual/directory/prefix/$SAS" require READ permission for SAS
+                # instead of LIST permission to filter files with virtual directory prefix
                 # https://github.com/Azure/azure-storage-azcopy/issues/583
                 # https://github.com/Azure/azure-storage-azcopy/issues/858
                 # https://github.com/Azure/azure-storage-azcopy/issues/1546
                 # may requires custom sorter to put complete _weekly after increasemental _daily https://superuser.com/questions/489275/how-to-do-custom-sorting-using-unix-sort
                 local latest_snapshot
-                latest_snapshot=$(azcopy ls "$CONTAINER$SAS" \
+                latest_snapshot=$(azcopy ls "$CONTAINER/$week/${file_system#rpool/}/$SAS" \
                     | awk -F\; '{print $1}' \
-                    | grep -oP '(?<=^INFO: )'"$directory"'[^/]*$' \
+                    | grep -oP '(?<=^INFO: )[^/]*$' \
                     | sort -n \
                     | tail -n 1)
                 [[ $latest_snapshot ]] || return 0
-                latest_snapshot=autosnap_${latest_snapshot#"$directory"}
+                latest_snapshot=autosnap_$latest_snapshot
                 zfs_send_to_azcopy "-i $file_system@$latest_snapshot $file_system@$snapshot" \
                     "$file_system" "$snapshot"
                 ;;
