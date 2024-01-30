@@ -23,9 +23,9 @@ azcopy ls --running-tally "$CONTAINER$SAS"
 mapfile -td, -c 1 -C process_file_system < <(printf "%s\0" "$SANOID_TARGETS")
 
 process_file_system() {
-    file_system=$2
-    file_system_dot=${file_system//\//.}
-    file_system_log=${file_system_dot#rpool.}
+    local file_system=$2
+    local file_system_dot=${file_system//\//.}
+    local file_system_log=${file_system_dot#rpool.}
     umask 177 # for newly created log files
     # https://stackoverflow.com/questions/75474417/bash-pv-outputting-m-at-the-end-of-each-line/75481792#75481792
     # https://stackoverflow.com/questions/70398228/transform-stream-sent-to-a-file-by-tee/70398383#70398383
@@ -36,19 +36,20 @@ process_file_system() {
 
 process_snapshots() {
     week=$(date +%G-W%V) # https://en.wikipedia.org/wiki/ISO_week_date
-    FILE_SYSTEM=$1
+    file_system=$1 # share with process_snapshot()
     # shellcheck disable=SC2317
     process_snapshot() {
-        snapshot=$2
+        local snapshot=$2
         case $snapshot in
             autosnap_*_daily)
-                directory=$week/${FILE_SYSTEM#rpool/}/
+                directory=$week/${file_system#rpool/}/
                 # azcopy ls "$CONTAINER$directory$SAS" require READ permission for SAS
                 # instead of LIST permission to filter files with directory prefix
                 # https://github.com/Azure/azure-storage-azcopy/issues/583
                 # https://github.com/Azure/azure-storage-azcopy/issues/858
                 # https://github.com/Azure/azure-storage-azcopy/issues/1546
                 # may requires custom sorter to put complete _weekly after increasemental _daily https://superuser.com/questions/489275/how-to-do-custom-sorting-using-unix-sort
+                local latest_snapshot
                 latest_snapshot=$(azcopy ls "$CONTAINER$SAS" \
                     | awk -F\; '{print $1}' \
                     | grep -oP '(?<=^INFO: )'"$directory"'[^/]*$' \
@@ -56,12 +57,12 @@ process_snapshots() {
                     | tail -n 1)
                 [[ $latest_snapshot ]] || return 0
                 latest_snapshot=autosnap_${latest_snapshot#"$directory"}
-                zfs_send_to_azcopy "-i $FILE_SYSTEM@$latest_snapshot $FILE_SYSTEM@$snapshot" \
-                    "$FILE_SYSTEM" "$snapshot"
+                zfs_send_to_azcopy "-i $file_system@$latest_snapshot $file_system@$snapshot" \
+                    "$file_system" "$snapshot"
                 ;;
             autosnap_*_weekly)
-                zfs_send_to_azcopy "$FILE_SYSTEM@$snapshot" \
-                    "$FILE_SYSTEM" "$snapshot"
+                zfs_send_to_azcopy "$file_system@$snapshot" \
+                    "$file_system" "$snapshot"
         esac
     }
     mapfile -td, -c 1 -C process_snapshot < <(printf "%s\0" "$SANOID_SNAPNAMES")
@@ -71,19 +72,23 @@ process_snapshots() {
 }
 
 zfs_send_to_azcopy() {
-    send_params=$1
-    file_system=$2
-    snapshot=$3
-    AZCOPY_LOG_LOCATION=$bundledir/logs/azcopy
+    local send_params=$1
+    local file_system=$2
+    local snapshot=$3
+    local AZCOPY_LOG_LOCATION=$bundledir/logs/azcopy
     export AZCOPY_LOG_LOCATION # https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azcopy-configure#change-the-location-of-log-files
     export AZCOPY_BUFFER_GB=0.5 # https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azcopy-optimize#optimize-memory-use
+
     # intentionally word-splitting https://unix.stackexchange.com/questions/378584/spread-bash-argument-by-whitespace/378591#378591
     # shellcheck disable=SC2086
-    send_size_uncompressed=$(zfs send -LcPn $send_params | awk '/^size/{print $2}')
+    local send_size_uncompressed
+    send_size_uncompressed=$(zfs send -LcPn "$send_params" | awk '/^size/{print $2}')
     [[ $send_size_uncompressed -le 624 ]] && return 0 # increasemental <=624 bytes usually means "no changes" between snapshots
     # shellcheck disable=SC2086
-    send_size=$(zfs send -LcPn $send_params | awk '/^size/{print $2}')
+    local send_size
+    send_size=$(zfs send -LcPn "$send_params" | awk '/^size/{print $2}')
     [[ $send_size ]] || return 0
+
     # https://serverfault.com/questions/95639/count-number-of-bytes-piped-from-one-snapshot-to-another/95654#95654
     # https://superuser.com/questions/1470608/file-redirection-vs-dd/1470733#1470733
     # shellcheck disable=SC2086
