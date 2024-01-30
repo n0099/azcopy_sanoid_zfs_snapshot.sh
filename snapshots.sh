@@ -7,6 +7,8 @@ send() {
     send_params=$1
     file_system=$2
     snapshot=$3
+    AZCOPY_LOG_LOCATION=$(pwd)/logs/azcopy
+    export AZCOPY_LOG_LOCATION # https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azcopy-configure#change-the-location-of-log-files
     export AZCOPY_BUFFER_GB=0.5 # https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azcopy-optimize#optimize-memory-use
     # intentionally word-splitting https://unix.stackexchange.com/questions/378584/spread-bash-argument-by-whitespace/378591#378591
     # shellcheck disable=SC2086

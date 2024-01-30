@@ -6,8 +6,7 @@ set -e # https://mywiki.wooledge.org/BashFAQ/105
 [[ $SANOID_PRE_FAILURE -eq 0 ]] || exit
 [[ $SANOID_TARGETS ]] || exit
 [[ $SANOID_SNAPNAMES ]] || exit
-export SAS=
-export CONTAINER=
+source ./config.sh
 azcopy ls --running-tally "$CONTAINER$SAS"
 
 process() {
