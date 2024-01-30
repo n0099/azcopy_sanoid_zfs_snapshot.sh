@@ -14,7 +14,6 @@ process() {
     file_system_dot=${file_system//\//.}
     file_system_log=${file_system_dot#rpool.}
     umask 177 # for newly created log files
-    cd /bak/sanoid
     # https://stackoverflow.com/questions/75474417/bash-pv-outputting-m-at-the-end-of-each-line/75481792#75481792
     # https://stackoverflow.com/questions/70398228/transform-stream-sent-to-a-file-by-tee/70398383#70398383
     ./snapshots.sh "$file_system" 2>&1 \
