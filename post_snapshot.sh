@@ -27,12 +27,15 @@ process_file_system() {
     local file_system=$2
     local file_system_dot=${file_system//\//.}
     local file_system_log=${file_system_dot#rpool.}
+    local log_file=$bundledir/logs/$file_system_log.log
     umask 177 # for newly created log files
     # https://stackoverflow.com/questions/75474417/bash-pv-outputting-m-at-the-end-of-each-line/75481792#75481792
-    # https://stackoverflow.com/questions/70398228/transform-stream-sent-to-a-file-by-tee/70398383#70398383
+    # https://unix.stackexchange.com/questions/38310/conditional-pipeline/38311#38311
     process_snapshots "$file_system" 2>&1 \
-        | tee >(stdbuf -oL tr "\r" "\n" \
-            >> logs/"$file_system_log".log)
+        | tee >([[ $1 == '--silent' ]] || cat ) \
+        | stdbuf -oL tr "\r" "\n" \
+        >> "$log_file"
+    echo >> "$log_file" # extra newline
 }
 
 process_snapshots() {
