@@ -26,13 +26,13 @@ zfs_send_to_azcopy() {
     export AZCOPY_BUFFER_GB=0.5 # https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azcopy-optimize#optimize-memory-use
 
     # intentionally word-splitting https://unix.stackexchange.com/questions/378584/spread-bash-argument-by-whitespace/378591#378591
-    # shellcheck disable=SC2086
     local send_size_uncompressed
-    send_size_uncompressed=$(zfs send -LcPn "$send_params" | awk '/^size/{print $2}')
-    [[ $send_size_uncompressed -le 624 ]] && return 0 # increasemental <=624 bytes usually means "no changes" between snapshots
     # shellcheck disable=SC2086
+    send_size_uncompressed=$(zfs send -LcPn $send_params | awk '/^size/{print $2}')
+    [[ $send_size_uncompressed -le 624 ]] && return 0 # increasemental <=624 bytes usually means "no changes" between snapshots
     local send_size
-    send_size=$(zfs send -LcPn "$send_params" | awk '/^size/{print $2}')
+    # shellcheck disable=SC2086
+    send_size=$(zfs send -LcPn $send_params | awk '/^size/{print $2}')
     [[ $send_size ]] || return 0
 
     # https://serverfault.com/questions/95639/count-number-of-bytes-piped-from-one-snapshot-to-another/95654#95654
@@ -87,11 +87,9 @@ process_file_system() {
     local log_file=$bundledir/logs/$file_system_log.log
     umask 177 # for newly created log files
     # https://stackoverflow.com/questions/75474417/bash-pv-outputting-m-at-the-end-of-each-line/75481792#75481792
-    # https://unix.stackexchange.com/questions/38310/conditional-pipeline/38311#38311
+    # https://stackoverflow.com/questions/70398228/transform-stream-sent-to-a-file-by-tee/70398383#70398383
     process_snapshots "$file_system" 2>&1 \
-        | tee >([[ $1 == '--silent' ]] || cat ) \
-        | stdbuf -oL tr "\r" "\n" \
-        >> "$log_file"
+        | tee >(stdbuf -oL tr "\r" "\n" >> "$log_file")
     echo >> "$log_file" # extra newline
 }
 
