@@ -6,7 +6,6 @@ set -e # https://mywiki.wooledge.org/BashFAQ/105
 [[ $SANOID_PRE_FAILURE -eq 0 ]] || exit
 [[ $SANOID_TARGETS ]] || exit
 [[ $SANOID_SNAPNAMES ]] || exit
-week=$(date +%G-W%V) # https://en.wikipedia.org/wiki/ISO_week_date
 
 # https://mywiki.wooledge.org/BashFAQ/028
 # https://stackoverflow.com/questions/35006457/choosing-between-0-and-bash-source
@@ -16,6 +15,7 @@ else
     bundledir=.
 fi
 source "$bundledir/config.sh"
+month_directory=$CONTAINER/$(date -u +%Y-%m)/
 
 zfs_send_to_azcopy() {
     local send_params=$1
@@ -39,10 +39,12 @@ zfs_send_to_azcopy() {
     # https://superuser.com/questions/1470608/file-redirection-vs-dd/1470733#1470733
     # shellcheck disable=SC2086
     zfs send -LcP $send_params \
-        | tee >(dd of=/dev/null) \
+        | tee >(/usr/bin/time -v dd of=/dev/null) \
         | pv -pterabfs "$send_size" \
-        | azcopy cp --from-to PipeBlob --block-size-mb 32 \
-            "$CONTAINER/$week/${file_system#rpool/}/${snapshot#autosnap_}$SAS"
+        | azcopy cp --from-to PipeBlob --block-size-mb 256 --block-blob-tier cold \
+            "$month_directory${file_system#rpool/}/${snapshot#autosnap_}$SAS"
+    # https://github.com/Azure/azure-storage-azcopy/issues/1642
+    # https://learn.microsoft.com/en-us/azure/storage/blobs/access-tiers-overview
 }
 
 process_snapshots() {
@@ -57,9 +59,9 @@ process_snapshots() {
                 # https://github.com/Azure/azure-storage-azcopy/issues/583
                 # https://github.com/Azure/azure-storage-azcopy/issues/858
                 # https://github.com/Azure/azure-storage-azcopy/issues/1546
-                # may requires custom sorter to put complete _weekly after increasemental _daily https://superuser.com/questions/489275/how-to-do-custom-sorting-using-unix-sort
+                # may requires custom sorter to put complete _monthly after increasemental _daily https://superuser.com/questions/489275/how-to-do-custom-sorting-using-unix-sort
                 local latest_snapshot
-                latest_snapshot=$(azcopy ls "$CONTAINER/$week/${file_system#rpool/}/$SAS" \
+                latest_snapshot=$(azcopy ls "$month_directory${file_system#rpool/}/$SAS" \
                     | awk -F\; '{print $1}' \
                     | grep -oP '(?<=^INFO: )[^/]*$' \
                     | sort -n \
@@ -69,7 +71,7 @@ process_snapshots() {
                 zfs_send_to_azcopy "-i $file_system@$latest_snapshot $file_system@$snapshot" \
                     "$file_system" "$snapshot"
                 ;;
-            autosnap_*_weekly)
+            autosnap_*_monthly)
                 zfs_send_to_azcopy "$file_system@$snapshot" \
                     "$file_system" "$snapshot"
         esac
@@ -93,7 +95,7 @@ process_file_system() {
     echo >> "$log_file" # extra newline
 }
 
-azcopy ls --running-tally "$CONTAINER/$week/$SAS"
+azcopy ls --running-tally "$month_directory$SAS"
 # https://github.com/jimsalterjrs/sanoid/issues/455
 # https://github.com/jimsalterjrs/sanoid/issues/104
 # https://stackoverflow.com/questions/918886/how-do-i-split-a-string-on-a-delimiter-in-bash/15988793#15988793
