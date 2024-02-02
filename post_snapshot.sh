@@ -26,10 +26,6 @@ zfs_send_to_azcopy() {
     export AZCOPY_BUFFER_GB=0.5 # https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azcopy-optimize#optimize-memory-use
 
     # intentionally word-splitting https://unix.stackexchange.com/questions/378584/spread-bash-argument-by-whitespace/378591#378591
-    local send_size_uncompressed
-    # shellcheck disable=SC2086
-    send_size_uncompressed=$(zfs send -LcPn $send_params | awk '/^size/{print $2}')
-    [[ $send_size_uncompressed -le 624 ]] && return 0 # increasemental <=624 bytes usually means "no changes" between snapshots
     local send_size
     # shellcheck disable=SC2086
     send_size=$(zfs send -LcPn $send_params | awk '/^size/{print $2}')
