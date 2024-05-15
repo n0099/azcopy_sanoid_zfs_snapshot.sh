@@ -1,6 +1,7 @@
 #!/bin/bash
-set -x
-set -e # https://mywiki.wooledge.org/BashFAQ/105
+# https://mywiki.wooledge.org/BashFAQ/105
+# https://gist.github.com/mohanpedala/1e2ff5661761d3abd0385e8223e16425
+set -euxo pipefail
 
 [[ $SANOID_SCRIPT == post ]] || exit
 [[ $SANOID_PRE_FAILURE -eq 0 ]] || exit
@@ -14,7 +15,7 @@ if [[ ${BASH_SOURCE[0]} = */* ]]; then
 else
     bundledir=.
 fi
-source "$bundledir/config.sh"
+source "$bundledir/.env"
 month_directory=$CONTAINER/$(date -u +%Y-%m)/
 
 zfs_send_to_azcopy() {
