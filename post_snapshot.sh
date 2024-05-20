@@ -32,13 +32,10 @@ zfs_send_to_azcopy() {
     send_size=$(zfs send -LcPn $send_params | awk '/^size/{print $2}')
     [[ $send_size ]] || return 0
 
-    # https://serverfault.com/questions/95639/count-number-of-bytes-piped-from-one-snapshot-to-another/95654#95654
-    # https://superuser.com/questions/1470608/file-redirection-vs-dd/1470733#1470733
     # shellcheck disable=SC2086
-    zfs send -LcP $send_params \
-        | tee >(/usr/bin/time -v dd of=/dev/null) \
+    /usr/bin/time -v zfs send -LcP $send_params \
         | pv -pterabfs "$send_size" \
-        | azcopy cp --from-to PipeBlob --block-size-mb 256 --block-blob-tier cold \
+        | /usr/bin/time -v azcopy cp --from-to PipeBlob --block-size-mb 256 --block-blob-tier cold \
             "$month_directory${file_system#rpool/}/${snapshot#autosnap_}$SAS"
     # https://github.com/Azure/azure-storage-azcopy/issues/1642
     # https://learn.microsoft.com/en-us/azure/storage/blobs/access-tiers-overview
