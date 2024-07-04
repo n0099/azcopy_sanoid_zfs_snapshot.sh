@@ -15,7 +15,9 @@ if [[ ${BASH_SOURCE[0]} = */* ]]; then
 else
     bundledir=.
 fi
+set -o allexport
 source "$bundledir/.env"
+set +o allexport
 month_directory=$CONTAINER/$(date -u +%Y-%m)/
 
 zfs_send_to_azcopy() {
