@@ -57,11 +57,11 @@ process_snapshots() {
                 # https://github.com/Azure/azure-storage-azcopy/issues/1546
                 # may requires custom sorter to put complete _monthly after increasemental _daily https://superuser.com/questions/489275/how-to-do-custom-sorting-using-unix-sort
                 local latest_snapshot
-                latest_snapshot=$(azcopy ls "$month_directory${file_system#rpool/}/$SAS" \
-                    | awk -F\; '{print $1}' \
-                    | grep -oP '(?<=^INFO: )[^/]*$' \
-                    | sort -n \
-                    | tail -n 1)
+                latest_snapshot=$(azcopy ls --output-type=json "$month_directory${file_system#rpool/}/$SAS" \
+                    | jq -sr 'map(select(.MessageType == "ListObject")
+                            | .MessageContent | fromjson
+                            | select(.Path | contains("/") | not) | .Path)
+                        | sort | last')
                 [[ $latest_snapshot ]] || return 0
                 latest_snapshot=autosnap_$latest_snapshot
                 zfs_send_to_azcopy "-i $file_system@$latest_snapshot $file_system@$snapshot" \
