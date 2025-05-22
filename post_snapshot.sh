@@ -22,12 +22,11 @@ month_directory=$CONTAINER/$(date -u +%Y-%m)/
 
 zfs_send_to_azcopy() {
     local file_system=$1
-    shift
-    local snapshot=$1
-    shift
-    # https://mywiki.wooledge.org/BashFAQ/050#I.27m_constructing_a_command_based_on_information_that_is_only_known_at_run_time
-    # https://askubuntu.com/questions/674333/how-to-pass-an-array-as-function-argument/995110#995110
-    local send_params=("$@")
+    local snapshot=$2
+    local latest_snapshot=$3
+    local send_params=()
+    [[ -n $latest_snapshot ]] && send_params+=('-i' "$file_system@$latest_snapshot" "$file_system@$snapshot")
+
     local AZCOPY_LOG_LOCATION=$bundledir/logs/azcopy
     export AZCOPY_LOG_LOCATION # https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azcopy-configure#change-the-location-of-log-files
     export AZCOPY_BUFFER_GB=0.5 # https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azcopy-optimize#optimize-memory-use
@@ -65,12 +64,10 @@ process_snapshots() {
                             | select(.Path | contains("/") | not) | .Path)
                         | sort | last')
                 [[ $latest_snapshot ]] || return 0
-                latest_snapshot=autosnap_$latest_snapshot
-                send_params=('-i' "$file_system@$latest_snapshot" "$file_system@$snapshot")
-                zfs_send_to_azcopy "$file_system" "$snapshot" "${send_params[@]}"
+                zfs_send_to_azcopy "$file_system" "$snapshot" autosnap_"$latest_snapshot"
                 ;;
             autosnap_*_monthly)
-                zfs_send_to_azcopy "$file_system" "$snapshot" "$file_system@$snapshot"
+                zfs_send_to_azcopy "$file_system" "$snapshot"
         esac
     }
     mapfile -td, -c 1 -C process_snapshot < <(printf "%s\0" "$SANOID_SNAPNAMES")
