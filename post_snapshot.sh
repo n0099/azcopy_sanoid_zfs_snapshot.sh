@@ -21,21 +21,23 @@ set +o allexport
 month_directory=$CONTAINER/$(date -u +%Y-%m)/
 
 zfs_send_to_azcopy() {
-    local send_params=$1
-    local file_system=$2
-    local snapshot=$3
+    local file_system=$1
+    shift
+    local snapshot=$1
+    shift
+    # https://mywiki.wooledge.org/BashFAQ/050#I.27m_constructing_a_command_based_on_information_that_is_only_known_at_run_time
+    # https://askubuntu.com/questions/674333/how-to-pass-an-array-as-function-argument/995110#995110
+    local send_params=("$@")
     local AZCOPY_LOG_LOCATION=$bundledir/logs/azcopy
     export AZCOPY_LOG_LOCATION # https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azcopy-configure#change-the-location-of-log-files
     export AZCOPY_BUFFER_GB=0.5 # https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azcopy-optimize#optimize-memory-use
 
-    # intentionally word-splitting https://unix.stackexchange.com/questions/378584/spread-bash-argument-by-whitespace/378591#378591
     local send_size
-    # shellcheck disable=SC2086
-    send_size=$(zfs send -LcPn $send_params | awk '/^size/{print $2}')
+    send_size=$(zfs send -LcPn "${send_params[@]}" | awk '/^size/{print $2}')
     [[ $send_size ]] || return 0
 
-    # shellcheck disable=SC2086
-    /usr/bin/time -v zfs send -LcP $send_params \
+    # https://mywiki.wooledge.org/BashFAQ/050
+    /usr/bin/time -v zfs send -LcP "${send_params[@]}" \
         | pv -pterabfs "$send_size" \
         | /usr/bin/time -v azcopy cp --from-to PipeBlob --block-size-mb 256 --block-blob-tier cold \
             "$month_directory${file_system#rpool/}/${snapshot#autosnap_}$SAS"
@@ -64,12 +66,11 @@ process_snapshots() {
                         | sort | last')
                 [[ $latest_snapshot ]] || return 0
                 latest_snapshot=autosnap_$latest_snapshot
-                zfs_send_to_azcopy "-i $file_system@$latest_snapshot $file_system@$snapshot" \
-                    "$file_system" "$snapshot"
+                send_params=('-i' "$file_system@$latest_snapshot" "$file_system@$snapshot")
+                zfs_send_to_azcopy "$file_system" "$snapshot" "${send_params[@]}"
                 ;;
             autosnap_*_monthly)
-                zfs_send_to_azcopy "$file_system@$snapshot" \
-                    "$file_system" "$snapshot"
+                zfs_send_to_azcopy "$file_system" "$snapshot" "$file_system@$snapshot"
         esac
     }
     mapfile -td, -c 1 -C process_snapshot < <(printf "%s\0" "$SANOID_SNAPNAMES")
