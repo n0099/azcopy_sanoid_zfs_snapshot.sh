@@ -15,6 +15,7 @@ if [[ ${BASH_SOURCE[0]} = */* ]]; then
 else
     bundledir=.
 fi
+# https://unix.stackexchange.com/questions/79064/how-to-export-variables-from-a-file/79077#79077
 set -o allexport
 source "$bundledir/.env"
 set +o allexport
@@ -31,14 +32,15 @@ zfs_send_to_azcopy() {
     export AZCOPY_LOG_LOCATION # https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azcopy-configure#change-the-location-of-log-files
     export AZCOPY_BUFFER_GB=0.5 # https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azcopy-optimize#optimize-memory-use
 
+    # https://mywiki.wooledge.org/BashPitfalls#local_var.3D.24.28cmd.29
     local send_size
     send_size=$(zfs send -LcPn "${send_params[@]}" | awk '/^size/{print $2}')
-    [[ $send_size ]] || return 0
+    [[ $send_size -gt 0 ]] || return 0
 
     # https://mywiki.wooledge.org/BashFAQ/050
     /usr/bin/time -v zfs send -LcP "${send_params[@]}" \
         | pv -pterabfs "$send_size" \
-        | /usr/bin/time -v azcopy cp --from-to PipeBlob --block-size-mb 256 --block-blob-tier cold \
+        | /usr/bin/time -v azcopy cp --from-to PipeBlob --block-size-mb 256 --overwrite false --block-blob-tier cold \
             "$month_directory${file_system#rpool/}/${snapshot#autosnap_}$SAS"
     # https://github.com/Azure/azure-storage-azcopy/issues/1642
     # https://learn.microsoft.com/en-us/azure/storage/blobs/access-tiers-overview
@@ -56,14 +58,15 @@ process_snapshots() {
                 # https://github.com/Azure/azure-storage-azcopy/issues/583
                 # https://github.com/Azure/azure-storage-azcopy/issues/858
                 # https://github.com/Azure/azure-storage-azcopy/issues/1546
-                # may requires custom sorter to put complete _monthly after increasemental _daily https://superuser.com/questions/489275/how-to-do-custom-sorting-using-unix-sort
+                # may requires custom sorter to put complete `_monthly` after increasemental `_daily`: https://superuser.com/questions/489275/how-to-do-custom-sorting-using-unix-sort
+                # https://mywiki.wooledge.org/BashPitfalls#local_var.3D.24.28cmd.29
                 local latest_snapshot
                 latest_snapshot=$(azcopy ls --output-type=json "$month_directory${file_system#rpool/}/$SAS" \
                     | jq -sr 'map(select(.MessageType == "ListObject")
                             | .MessageContent | fromjson
                             | select(.Path | contains("/") | not) | .Path)
                         | sort | last')
-                [[ $latest_snapshot ]] || return 0
+                [[ -n $latest_snapshot ]] || return 0
                 zfs_send_to_azcopy "$file_system" "$snapshot" autosnap_"$latest_snapshot"
                 ;;
             autosnap_*_monthly)
@@ -78,10 +81,11 @@ process_snapshots() {
 
 process_file_system() {
     local file_system=$2
-    local file_system_dot=${file_system//\//.}
-    local file_system_log=${file_system_dot#rpool.}
-    local log_file=$bundledir/logs/$file_system_log.log
-    umask 177 # for newly created log files
+    # https://stackoverflow.com/questions/917260/can-var-parameter-expansion-expressions-be-nested-in-bash
+    local file_system_slash2dot=${file_system//\//.}
+    local file_system_without_rpool=${file_system_slash2dot#rpool.}
+    local log_file=$bundledir/logs/$file_system_without_rpool.log
+    umask 177 # https://superuser.com/questions/1030110/what-is-the-difference-between-umask-and-chmod/1449322#1449322
     # https://stackoverflow.com/questions/75474417/bash-pv-outputting-m-at-the-end-of-each-line/75481792#75481792
     # https://stackoverflow.com/questions/70398228/transform-stream-sent-to-a-file-by-tee/70398383#70398383
     process_snapshots "$file_system" 2>&1 \
